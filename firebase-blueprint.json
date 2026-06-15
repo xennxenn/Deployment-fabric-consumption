@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "project": {
+      "title": "Project",
+      "description": "A fabric consumption project with quotation information and items",
+      "type": "object",
+      "properties": {
+        "quotation_no": {
+          "type": "string"
+        },
+        "cs_phone": {
+          "type": "string"
+        },
+        "sale_id": {
+          "type": "string"
+        },
+        "customerName": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "province": {
+          "type": "string"
+        },
+        "contact_name": {
+          "type": "string"
+        },
+        "confirm_date": {
+          "type": "string"
+        },
+        "discount_round": {
+          "type": "number"
+        },
+        "netTotal": {
+          "type": "number"
+        },
+        "total_F": {
+          "type": "number"
+        },
+        "total_P": {
+          "type": "number"
+        },
+        "total_A": {
+          "type": "number"
+        },
+        "uploadDate": {
+          "type": "number"
+        },
+        "items": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "quotation_no",
+        "customerName",
+        "netTotal",
+        "uploadDate"
+      ]
+    }
+  },
+  "firestore": {
+    "projects/{projectId}": {
+      "schema": "project",
+      "description": "Global shared projects accessible by all clients without requiring login for instant device synchronization"
+    },
+    "users/{userId}/projects/{projectId}": {
+      "schema": "project",
+      "description": "Projects uploaded by a specific user"
+    }
+  }
+}

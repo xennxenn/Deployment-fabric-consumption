@@ -1,0 +1,6 @@
+{
+  "name": "Fabric Consumption Analytics",
+  "description": "ระบบคำนวณและประมวลผลการจำลองการสั่งผลิต ผ้าม่าน มู่ลี่ ม่านม้วน และอุปกรณ์ ตรวจสอบพื้นที่การใช้ผ้าแยกตามสี ขนาด และห้องเพื่อการประหยัดวัตถุดิบสูงสุด (Fabric Consumption Analytics System)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
