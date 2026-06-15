@@ -22,7 +22,8 @@ import {
   List,
   ChevronLeft,
   AlertCircle,
-  Cloud
+  Cloud,
+  Layers
 } from 'lucide-react';
 
 import firebaseConfig from '../firebase-applet-config.json';
@@ -30,6 +31,7 @@ import { Project, ProjectItem } from './types';
 import DashboardView from './components/DashboardView';
 import ProjectListView from './components/ProjectListView';
 import ProjectDetailView from './components/ProjectDetailView';
+import FabricCategoryReportView from './components/FabricCategoryReportView';
 
 // --- Custom Error Handling for Firestore ---
 enum OperationType {
@@ -199,13 +201,76 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'list' | 'detail'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'list' | 'detail' | 'fabric-report'>('dashboard');
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [xlsxLoaded, setXlsxLoaded] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isUsingCloud, setIsUsingCloud] = useState(true);
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+
+  // Custom Fabric Classification States
+  const [customMappings, setCustomMappings] = useState<{ [key: string]: string }>({});
+  const [localMappings, setLocalMappings] = useState<{ [key: string]: string }>(() => {
+    try {
+      const saved = localStorage.getItem('curtainpro_custom_mappings');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
+  const mergedMappings = React.useMemo(() => {
+    return { ...localMappings, ...customMappings };
+  }, [localMappings, customMappings]);
+
+  // Cloud sync active banner state
+  const [showCloudSyncBanner, setShowCloudSyncBanner] = useState<boolean>(() => {
+    return !localStorage.getItem('curtainpro_hide_online_banner');
+  });
+
+  // Listener for custom mapping tables
+  useEffect(() => {
+    const mappingsRef = collection(db, 'custom_fabric_mappings');
+    const unsubscribe = onSnapshot(
+      mappingsRef,
+      (snapshot) => {
+        const map: { [key: string]: string } = {};
+        snapshot.docs.forEach((docSnap) => {
+          map[docSnap.id.toUpperCase()] = docSnap.data().category;
+        });
+        setCustomMappings(map);
+      },
+      (error) => {
+        console.warn('Firestore custom mappings subscriber inactive (probably offline):', error);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const handleSaveMapping = async (fabricName: string, category: string) => {
+    const key = fabricName.trim().toUpperCase();
+    const updatedLocals = { ...localMappings, [key]: category };
+    
+    // Save to local storage first
+    setLocalMappings(updatedLocals);
+    try {
+      localStorage.setItem('curtainpro_custom_mappings', JSON.stringify(updatedLocals));
+    } catch (e) {
+      console.warn('LocalStorage save error:', e);
+    }
+
+    // Save/Sync to Cloud
+    try {
+      const docRef = doc(db, 'custom_fabric_mappings', key);
+      await setDoc(docRef, {
+        category,
+        updatedAt: Date.now()
+      });
+    } catch (error) {
+      console.warn('Cloud sync offline or blocked. Merged mappings kept local cache active.', error);
+    }
+  };
 
   // 1. Loader Script Setup
   useEffect(() => {
@@ -468,7 +533,7 @@ export default function App() {
                     setCurrentView('dashboard');
                     setSelectedProject(null);
                   }}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     currentView === 'dashboard' && !selectedProject
                       ? 'bg-white text-indigo-600 shadow-xs'
                       : 'text-slate-500 hover:text-slate-800'
@@ -479,10 +544,24 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => {
+                    setCurrentView('fabric-report');
+                    setSelectedProject(null);
+                  }}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    currentView === 'fabric-report'
+                      ? 'bg-white text-indigo-600 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  id="nav-fabric-report-button"
+                >
+                  <Layers className="w-3.5 h-3.5" /> <span className="hidden md:inline">รายงานประเภทผ้า</span>
+                </button>
+                <button
+                  onClick={() => {
                     setCurrentView('list');
                     setSelectedProject(null);
                   }}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     currentView === 'list' || selectedProject
                       ? 'bg-white text-indigo-600 shadow-xs'
                       : 'text-slate-500 hover:text-slate-800'
@@ -546,14 +625,14 @@ export default function App() {
               ทดสอบเชื่อมต่อคลาวด์ใหม่
             </button>
           </div>
-        ) : (
+        ) : showCloudSyncBanner ? (
           <div className="mb-6 bg-gradient-to-r from-emerald-50/70 to-teal-50/50 border border-emerald-100/80 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-3xs animate-fade-in text-slate-700">
             <div className="flex items-start gap-3">
               <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-600 shrink-0">
                 <Cloud className="w-5 h-5 text-emerald-600 animate-bounce" />
               </div>
               <div>
-                <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                <span className="text-xs font-black text-slate-800 flex items-center gap-1.5 animate-pulse">
                   ระบบคลาวด์ซิงค์เรียลไทม์ออนไลน์ (Shared Cloud Auto-Sync) 
                   <span className="bg-emerald-500 text-white text-[8px] tracking-widest px-1.5 py-0.5 rounded-full font-black uppercase">ONLINE</span>
                 </span>
@@ -562,10 +641,27 @@ export default function App() {
                 </span>
               </div>
             </div>
+
+            <button
+              onClick={() => {
+                localStorage.setItem('curtainpro_hide_online_banner', 'true');
+                setShowCloudSyncBanner(false);
+              }}
+              className="px-3.5 py-2 bg-slate-200/80 hover:bg-slate-300 text-slate-600 hover:text-slate-800 text-[11px] font-black tracking-tight transition-all rounded-xl cursor-pointer whitespace-nowrap shrink-0"
+            >
+              ซ่อนส่วนนี้
+            </button>
           </div>
-        )}
+        ) : null}
         {currentView === 'dashboard' && !selectedProject && (
           <DashboardView projects={projects} />
+        )}
+        {currentView === 'fabric-report' && !selectedProject && (
+          <FabricCategoryReportView
+            projects={projects}
+            customMappings={mergedMappings}
+            onSaveMapping={handleSaveMapping}
+          />
         )}
         {currentView === 'list' && !selectedProject && (
           <ProjectListView

@@ -22,7 +22,8 @@ import {
   Info,
   ChevronRight,
   Calculator,
-  Coins
+  Coins,
+  ArrowUpDown
 } from 'lucide-react';
 import {
   BarChart,
@@ -120,6 +121,13 @@ export default function DashboardView({ projects }: DashboardViewProps) {
 
   // Search Filter for fabrics ranking
   const [fabricSearch, setFabricSearch] = useState('');
+
+  // Search Filter for monthly average fabrics list
+  const [avgFabricSearch, setAvgFabricSearch] = useState('');
+
+  // Sorting selectors for Drilldowns
+  const [drilldownSortField, setDrilldownSortField] = useState<'yards' | 'sales'>('yards');
+  const [drilldownSortOrder, setDrilldownSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Estimator State
   const [targetRevenue, setTargetRevenue] = useState<number>(100000);
@@ -361,6 +369,20 @@ export default function DashboardView({ projects }: DashboardViewProps) {
       ? topFabricsOriginal.filter(f => f.name.toLowerCase().includes(fabricSearch.toLowerCase()))
       : topFabricsOriginal;
   }, [topFabricsOriginal, fabricSearch]);
+
+  // Compute total months in the selected search range for monthly averages calculation
+  const totalMonthsFiltered = React.useMemo(() => {
+    return Math.max(1, (endYear - startYear) * 12 + (endMonth - startMonth) + 1);
+  }, [startYear, startMonth, endYear, endMonth]);
+
+  // Display top 10 best sellers by default, or all filtered list if search term is active
+  const topFabricsForAvg = React.useMemo(() => {
+    if (avgFabricSearch) {
+      return topFabricsOriginal.filter(f => f.name.toLowerCase().includes(avgFabricSearch.toLowerCase()));
+    } else {
+      return topFabricsOriginal.slice(0, 10);
+    }
+  }, [topFabricsOriginal, avgFabricSearch]);
 
   // Handle Double Clicks on Columns or Rows
   const triggerFabricColorDrilldown = (fabricName: string, colors: any, total: number, totalNetTotal: number) => {
@@ -997,6 +1019,121 @@ export default function DashboardView({ projects }: DashboardViewProps) {
         </div>
       </div>
 
+      {/* 📅 Section 4: Average Monthly Fabric Consumption */}
+      <div className="bg-white rounded-3xl shadow-sm p-6 border border-slate-100 mt-6" id="monthly-average-fabrics-panel">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+          <div>
+            <h3 className="text-base font-extrabold text-slate-800 flex items-center gap-1.5 font-sans">
+              <Calendar className="w-5 h-5 text-indigo-600 animate-pulse" /> อัตราการใช้ผ้าเฉลี่ยต่อเดือน (Monthly Average Fabric Consumption)
+            </h3>
+            <p className="text-xs text-slate-400 font-bold mt-0.5 font-sans">
+              คำนวณสถิติความเร็วการระบายผ้าเป็นจำนวนหลาต่อเดือน (คำนวณจากยอดโครงการสะสมทั้งหมด <span className="text-indigo-600 font-black">{totalMonthsFiltered}</span> เดือนของช่วงตัวเลือกปัจจุบัน)
+            </p>
+          </div>
+
+          <div className="relative w-full md:w-80 shrink-0">
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
+              <Search className="w-4 h-4 text-slate-400" />
+            </span>
+            <input
+              type="text"
+              placeholder="ค้นหารุ่นคลังผ้าอื่น..."
+              value={avgFabricSearch}
+              onChange={(e) => setAvgFabricSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-2xl text-xs bg-slate-50/50 hover:bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-600 focus:border-indigo-650 transition-all font-bold placeholder-slate-455 text-slate-700"
+            />
+            {avgFabricSearch && (
+              <button
+                onClick={() => setAvgFabricSearch('')}
+                className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-slate-50/40 border border-slate-200/65 rounded-2xl p-4 mb-6 leading-normal flex items-start gap-3">
+          <Info className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+          <p className="text-[11px] text-slate-550 font-medium font-sans">
+            มาตรฐานแสดงข้อมูล <span className="font-extrabold text-indigo-650">ผ้า 10 รายการขายดีที่สุด (Top 10 Best Sellers)</span> เป็นค่าเริ่มต้นอัตโนมัติตามข้อกำหนดของทีมพัฒนา หากต้องการดูรายงานสถิติตัวอื่นๆ สามารถป้อนโค้ดหรือชื่อของผ้ารุ่นใดๆ ในช่องค้นหาด้านบนเพื่อวิเคราะห์ค่าเฉลี่ยรายเดือนได้ทันทีแบบเรียลไทม์
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {topFabricsForAvg.length > 0 ? (
+            topFabricsForAvg.map((f: any, idx: number) => {
+              const uName = f.name.toUpperCase();
+              const isSheer = SHEER_FABRICS.includes(uName);
+              const isWide = WIDE_FABRICS.includes(uName);
+              const avgPerMonth = f.yards / totalMonthsFiltered;
+
+              const categoryLabel = isSheer
+                ? 'ผ้าม่านโปร่งหน้ากว้าง'
+                : isWide
+                  ? 'ผ้าม่านทึบหน้ากว้าง'
+                  : 'ผ้าผืนปกติ';
+
+              return (
+                <div 
+                  key={idx}
+                  className="bg-white border border-slate-100 rounded-2xl p-4 flex flex-col justify-between hover:shadow-2xs transition-all hover:border-slate-200"
+                >
+                  <div className="flex justify-between items-start gap-4">
+                    <div>
+                      <span className="text-[13px] font-extrabold text-slate-800 block leading-tight font-sans">
+                        {f.name}
+                      </span>
+                      <span className={`inline-flex items-center text-[9px] font-black px-1.5 py-0.5 rounded-sm mt-1.5 uppercase leading-none border select-none tracking-wide ${
+                        isSheer 
+                          ? 'bg-teal-50 text-teal-700 border-teal-150' 
+                          : isWide 
+                            ? 'bg-slate-50 text-slate-700 border-slate-200'
+                            : 'bg-indigo-50 text-indigo-700 border-indigo-150'
+                      }`}>
+                        {categoryLabel}
+                      </span>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] text-slate-400 font-bold block leading-none font-sans">ความกว้างรวม</span>
+                      <span className="text-[13px] font-black text-slate-800 block mt-1 leading-none font-mono">
+                        {formatNumber(f.yards, 2)} หลา
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-slate-100/70 flex items-center justify-between">
+                    <div>
+                      <span className="text-[9px] text-slate-450 font-extrabold block uppercase tracking-wide font-sans">
+                        อัตราเฉลี่ยความต้องการใช้ผ้าจริงรายเดือน (Monthly Volumetric Speed)
+                      </span>
+                      <span className="text-base font-black text-indigo-650 flex items-baseline gap-1 mt-1 leading-none font-mono">
+                        {formatNumber(avgPerMonth, 2)} 
+                        <span className="text-[10px] text-slate-450 font-bold font-sans">หลา/เดือน</span>
+                      </span>
+                    </div>
+
+                    <div className="px-3 py-2 bg-indigo-50/50 rounded-xl border border-indigo-100 flex flex-col items-center justify-center min-w-24">
+                      <span className="text-[8px] font-black text-indigo-550 block leading-none uppercase select-none font-sans">
+                        มูลค่าเฉลี่ย
+                      </span>
+                      <span className="text-[11px] font-black text-indigo-700 mt-1.5 leading-none font-mono">
+                        {formatCurrency(f.netTotal / totalMonthsFiltered)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="col-span-1 md:col-span-2 bg-slate-50 border border-slate-100 rounded-2xl p-8 text-center text-slate-450 text-xs font-semibold">
+              ไม่พบข้อมูลผ้ารุ่นดังกล่าวในการประมวลผลช่วงเวลานี้
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* 👥 Employees & Provinces double clickable visualizations */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -1233,6 +1370,45 @@ export default function DashboardView({ projects }: DashboardViewProps) {
               {/* Data list in modal scroll area */}
               <div className="p-6 overflow-y-auto flex-1 space-y-4">
                 
+                {/* SORTING BAR FOR DRILLDOWNS WITH FABRIC SELECTIONS */}
+                {(drilldown.type === 'fabric_contrib' || drilldown.type === 'employee_detail' || drilldown.type === 'province_detail') && (
+                  <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs mb-3">
+                    <span className="font-extrabold text-slate-500">เรียงลำดับมิติข้อมูลรายนี้ (Sort Drilldown):</span>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setDrilldownSortField('yards')}
+                          className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                            drilldownSortField === 'yards'
+                              ? 'bg-slate-800 text-white shadow-3xs'
+                              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          จำนวนหลา (Yards)
+                        </button>
+                        <button
+                          onClick={() => setDrilldownSortField('sales')}
+                          className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                            drilldownSortField === 'sales'
+                              ? 'bg-slate-800 text-white shadow-3xs'
+                              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          ยอดขายสุทธิ (Sales)
+                        </button>
+                      </div>
+                      <div className="h-4 border-l border-slate-200"></div>
+                      <button
+                        onClick={() => setDrilldownSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 font-bold text-slate-700 cursor-pointer"
+                      >
+                        <ArrowUpDown className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>{drilldownSortOrder === 'desc' ? 'เรียงจากมากไปน้อย' : 'เรียงจากน้อยไปมาก'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* A. PROJECTS list breakdown (onDoubleClick 'โครงการทั้งหมด') */}
                 {drilldown.type === 'projects' && (
                   <div className="overflow-x-auto rounded-2xl border border-slate-100">
@@ -1269,7 +1445,7 @@ export default function DashboardView({ projects }: DashboardViewProps) {
                     <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100/60 leading-normal">
                       <span className="text-xs text-indigo-900 font-bold block mb-1">💡 โน้ตวิเคราะห์อุปสงค์ผ้าสะสม</span>
                       <p className="text-[11px] text-indigo-700">
-                        รายการด้านล่างรวมรุ่นผ้าทั้งหมดที่ถูกกำหนดใช้ในใบเสนอราคาตามขอบเขตช่วงตัวเลือกปัจจุบัน เรียงตามความยาวหลารวม
+                        รายการด้านล่างรวมรุ่นผ้าทั้งหมดที่ถูกกำหนดใช้ในใบเสนอราคาตามขอบเขตช่วงตัวเลือกปัจจุบัน เรียงลำดับตามตัวเลือกที่คุณกำหนดด้านบน
                       </p>
                     </div>
                     <div className="overflow-x-auto rounded-2xl border border-slate-100">
@@ -1284,7 +1460,11 @@ export default function DashboardView({ projects }: DashboardViewProps) {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-medium">
-                          {drilldown.data.map((f: any, idx: number) => (
+                          {[...drilldown.data].sort((a: any, b: any) => {
+                            const valA = drilldownSortField === 'yards' ? a.yards : a.netTotal;
+                            const valB = drilldownSortField === 'yards' ? b.yards : b.netTotal;
+                            return drilldownSortOrder === 'desc' ? valB - valA : valA - valB;
+                          }).map((f: any, idx: number) => (
                             <tr key={idx} className="hover:bg-slate-50/55">
                               <td className="px-4 py-3 font-bold text-slate-800">{f.name}</td>
                               <td className="px-4 py-3">
@@ -1433,7 +1613,11 @@ export default function DashboardView({ projects }: DashboardViewProps) {
                         </div>
                         <div className="divide-y divide-slate-100 max-h-[300px] overflow-y-auto">
                           {drilldown.data.fabrics.length > 0 ? (
-                            drilldown.data.fabrics.map((f: any, idx: number) => {
+                            [...drilldown.data.fabrics].sort((a: any, b: any) => {
+                              const valA = drilldownSortField === 'yards' ? a.yards : a.netTotal;
+                              const valB = drilldownSortField === 'yards' ? b.yards : b.netTotal;
+                              return drilldownSortOrder === 'desc' ? valB - valA : valA - valB;
+                            }).map((f: any, idx: number) => {
                               const isSheer = SHEER_FABRICS.includes(f.name.toUpperCase());
                               const isWide = WIDE_FABRICS.includes(f.name.toUpperCase());
 
@@ -1455,7 +1639,7 @@ export default function DashboardView({ projects }: DashboardViewProps) {
                               );
                             })
                           ) : (
-                            <div className="p-6 text-center text-slate-400 text-xs">
+                            <div className="p-6 text-center text-slate-400 text-xs text-slate-405">
                               ไม่พบข้อมูลการขายผ้าของพนักงานรายนี้
                             </div>
                           )}
@@ -1514,7 +1698,11 @@ export default function DashboardView({ projects }: DashboardViewProps) {
                         </div>
                         <div className="divide-y divide-slate-100 max-h-[300px] overflow-y-auto">
                           {drilldown.data.fabrics.length > 0 ? (
-                            drilldown.data.fabrics.map((f: any, idx: number) => {
+                            [...drilldown.data.fabrics].sort((a: any, b: any) => {
+                              const valA = drilldownSortField === 'yards' ? a.yards : a.netTotal;
+                              const valB = drilldownSortField === 'yards' ? b.yards : b.netTotal;
+                              return drilldownSortOrder === 'desc' ? valB - valA : valA - valB;
+                            }).map((f: any, idx: number) => {
                               const isSheer = SHEER_FABRICS.includes(f.name.toUpperCase());
                               const isWide = WIDE_FABRICS.includes(f.name.toUpperCase());
 
