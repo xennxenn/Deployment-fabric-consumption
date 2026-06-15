@@ -1,10 +1,10 @@
 {
-  "projectId": "gen-lang-client-0654376496",
-  "appId": "1:959237168719:web:728bb043a779a43a8c943a",
-  "apiKey": "AIzaSyB7emkY7yQjWf7rWt_vblXe_VcHCHskNmc",
-  "authDomain": "gen-lang-client-0654376496.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-c141cf07-1729-4287-b6e7-c56aff1e1d01",
-  "storageBucket": "gen-lang-client-0654376496.firebasestorage.app",
-  "messagingSenderId": "959237168719",
-  "measurementId": ""
+  "apiKey": "AIzaSyDeV9uLMxzP3-Caw_zeJs6jn4RBajXCR88",
+  "authDomain": "fabric-consumption.firebaseapp.com",
+  "databaseURL": "https://fabric-consumption-default-rtdb.asia-southeast1.firebasedatabase.app",
+  "projectId": "fabric-consumption",
+  "storageBucket": "fabric-consumption.firebasestorage.app",
+  "messagingSenderId": "790457423217",
+  "appId": "1:790457423217:web:6adfd265224a227ff352d0",
+  "firestoreDatabaseId": "(default)"
 }

@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import {
-  getFirestore,
+  initializeFirestore,
   collection,
   onSnapshot,
   doc,
@@ -54,7 +54,9 @@ interface FirestoreErrorInfo {
 
 // Global reference for auth and db
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL */
+const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+}, firebaseConfig.firestoreDatabaseId); /* CRITICAL */
 const auth = getAuth(app);
 
 function handleFirestoreError(
@@ -202,6 +204,8 @@ export default function App() {
   const [xlsxLoaded, setXlsxLoaded] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isUsingCloud, setIsUsingCloud] = useState(true);
+  const [firestoreError, setFirestoreError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   // 1. Loader Script Setup
   useEffect(() => {
@@ -230,17 +234,19 @@ export default function App() {
         data.sort((a, b) => b.uploadDate - a.uploadDate);
         setProjects(data);
         saveLocalProjects(data); // Mirror to Local Storage
+        setFirestoreError(null);
         setLoading(false);
       },
       (error) => {
         console.warn('Firestore subscription failed, falling back to Local Storage:', error);
+        setFirestoreError(`เชื่อมโยงคลาวด์ไม่สำเร็จ: ${error.message || error} (ขณะนี้ระบบสลับมาใช้ความจุออฟไลน์ในตัวเครื่องนี้ชั่วคราว)`);
         const locals = loadLocalProjects();
         setProjects(locals);
         setLoading(false);
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [retryCount]);
 
   // 3. Import File to Firestore with robust columns mapping
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -345,8 +351,9 @@ export default function App() {
           project.netTotal = project.netTotal - project.discount_round;
           try {
             await setDoc(doc(db, 'projects', project.quotation_no), project);
-          } catch (writeErr) {
+          } catch (writeErr: any) {
             console.warn('Firestore write error in public cloud, saving to local cache:', writeErr);
+            setFirestoreError(`อัปโหลดใบแจ้งงานขึ้นคลาวด์ขัดข้อง: ${writeErr.message || writeErr}`);
             saveLocalProjectSingle(project);
           }
         });
@@ -369,8 +376,9 @@ export default function App() {
     
     try {
       await deleteDoc(doc(db, 'projects', id));
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Firestore delete failed in public cloud, falling back to local action:', err);
+      setFirestoreError(`ลบโครงงานในระบบคลาวด์ขัดข้อง: ${err.message || err}`);
       deleteLocalProjectSingle(id);
       const locals = loadLocalProjects();
       setProjects(locals);
@@ -420,13 +428,37 @@ export default function App() {
 
             <div className="flex items-center gap-4">
               {/* Cloud Database Connected Status Badge */}
-              <div className="flex items-center gap-2 bg-emerald-50/80 px-3 py-1.5 rounded-xl border border-emerald-100 select-none">
-                <Cloud className="w-4 h-4 text-emerald-600 animate-pulse" />
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border select-none transition-all duration-350 ${
+                firestoreError 
+                  ? 'bg-rose-50/90 text-rose-700 border-rose-150' 
+                  : 'bg-emerald-50/80 text-emerald-700 border-emerald-100'
+              }`}>
+                {firestoreError ? (
+                  <AlertCircle className="w-4 h-4 text-rose-500 animate-pulse shrink-0" />
+                ) : (
+                  <Cloud className="w-4 h-4 text-emerald-600 animate-pulse shrink-0" />
+                )}
                 <div className="flex flex-col">
-                  <span className="text-[8px] font-black leading-3 text-emerald-700 tracking-wider uppercase">CLOUD STATUS</span>
-                  <span className="text-[11px] font-extrabold text-slate-700 leading-3">
-                    ออนไลน์ข้อมูลเสถียร
+                  <span className={`text-[8px] font-black leading-3 tracking-wider uppercase ${firestoreError ? 'text-rose-600' : 'text-emerald-700'}`}>
+                    {firestoreError ? 'OFFLINE / FALLBACK' : 'CLOUD STATUS'}
                   </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-extrabold text-slate-700 leading-3 whitespace-nowrap">
+                      {firestoreError ? 'บันทึกแบบออฟไลน์โลคอล' : 'ออนไลน์ข้อมูลเสถียร'}
+                    </span>
+                    {firestoreError && (
+                      <button 
+                        onClick={() => {
+                          setLoading(true);
+                          setRetryCount(prev => prev + 1);
+                        }}
+                        className="text-[9px] font-black text-rose-600 border border-rose-200 px-1 rounded-sm bg-rose-50 hover:bg-rose-100 text-center uppercase cursor-pointer"
+                        title="คลิกเพื่อพยายามเชื่อมระบบคลาวด์ใหม่อีกครั้ง"
+                      >
+                        ลองใหม่
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -486,22 +518,52 @@ export default function App() {
 
       {/* 🚀 Primary Container */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6 bg-gradient-to-r from-emerald-50/70 to-teal-50/50 border border-emerald-100/80 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-3xs animate-fade-in text-slate-700">
-          <div className="flex items-start gap-3">
-            <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-600 shrink-0">
-              <Cloud className="w-5 h-5 text-emerald-600 animate-bounce" />
+        {firestoreError ? (
+          <div className="mb-6 bg-gradient-to-r from-rose-50/70 to-pink-50/40 border border-rose-150 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-3xs animate-fade-in text-rose-850">
+            <div className="flex items-start gap-3">
+              <div className="bg-rose-500/10 p-2 rounded-xl text-rose-600 shrink-0">
+                <AlertCircle className="w-5 h-5 text-rose-600 animate-bounce" />
+              </div>
+              <div className="space-y-1">
+                <span className="text-xs font-black text-rose-900 flex items-center gap-1.5 uppercase tracking-wide">
+                  ตรวจพบการขีดขวางหรือเชื่อมต่อคลาวด์ไม่สำเร็จ (Database Offline Fallback)
+                </span>
+                <span className="text-[11px] font-bold text-rose-700 block leading-relaxed max-w-3xl">
+                  {firestoreError}
+                </span>
+                <span className="text-[10px] font-medium text-slate-500 block">
+                  *ข้อมูลที่คุณแก้ไขหรือนำเข้าใหม่จะยังคง บันทึกอยู่เครื่องปัจจุบันอย่างปลอดภัย (ผ่าน Local Storage) แต่ข้อมูลเหล่านี้จะยังไม่ออฟไลน์ไปเครื่องอื่นจนกว่าจะเชื่อมโยงสัญญาณคลาวด์ได้สมบูรณ์ กรุณาตรวจสอบสัญญาณอินเทอร์เน็ต สลับบราวเซอร์ หรือกดทดสอบเพื่อเข้าคลาวด์ใหม่อีกครั้ง
+                </span>
+              </div>
             </div>
-            <div>
-              <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                ระบบคลาวด์ซิงค์เรียลไทม์ออนไลน์ (Shared Cloud Auto-Sync) 
-                <span className="bg-emerald-500 text-white text-[8px] tracking-widest px-1.5 py-0.5 rounded-full font-black uppercase">ONLINE</span>
-              </span>
-              <span className="text-[11px] font-bold text-slate-500 block mt-1 leading-relaxed">
-                ฐานข้อมูลโปรดักชันออนไลน์เรียลไทม์ผ่าน Vercel / GitHub หรือเว็บเซิร์ฟเวอร์ใดๆ ได้อัตโนมัติ คุณและทีมงานทุกคนสามารถนำเข้าใบแจ้งงาน ค้นหารุ่นผ้า และวิเคราะห์ยอดขายร่วมกันทุกเครื่องได้ทันทีอย่างไร้รอยต่อ โดยไม่ต้องลงชื่อเข้าใช้งาน (No Sign-in Required)
-              </span>
+            <button
+              onClick={() => {
+                setLoading(true);
+                setRetryCount(prev => prev + 1);
+              }}
+              className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap shadow-sm shrink-0 shadow-rose-600/20"
+            >
+              ทดสอบเชื่อมต่อคลาวด์ใหม่
+            </button>
+          </div>
+        ) : (
+          <div className="mb-6 bg-gradient-to-r from-emerald-50/70 to-teal-50/50 border border-emerald-100/80 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-3xs animate-fade-in text-slate-700">
+            <div className="flex items-start gap-3">
+              <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-600 shrink-0">
+                <Cloud className="w-5 h-5 text-emerald-600 animate-bounce" />
+              </div>
+              <div>
+                <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                  ระบบคลาวด์ซิงค์เรียลไทม์ออนไลน์ (Shared Cloud Auto-Sync) 
+                  <span className="bg-emerald-500 text-white text-[8px] tracking-widest px-1.5 py-0.5 rounded-full font-black uppercase">ONLINE</span>
+                </span>
+                <span className="text-[11px] font-bold text-slate-500 block mt-1 leading-relaxed">
+                  ฐานข้อมูลโปรดักชันออนไลน์เรียลไทม์ผ่าน Vercel / GitHub หรือเว็บเซิร์ฟเวอร์ใดๆ ได้อัตโนมัติ คุณและทีมงานทุกคนสามารถนำเข้าใบแจ้งงาน ค้นหารุ่นผ้า และวิเคราะห์ยอดขายร่วมกันทุกเครื่องได้ทันทีอย่างไร้รอยต่อ โดยไม่ต้องลงชื่อเข้าใช้งาน (No Sign-in Required)
+                </span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
         {currentView === 'dashboard' && !selectedProject && (
           <DashboardView projects={projects} />
         )}
