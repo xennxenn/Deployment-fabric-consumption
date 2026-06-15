@@ -5,15 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import {
-  getAuth,
-  signInAnonymously,
-  onAuthStateChanged,
-  User as FirebaseUser,
-  GoogleAuthProvider,
-  signInWithPopup,
-  signOut
-} from 'firebase/auth';
+import { getAuth } from 'firebase/auth';
 import {
   getFirestore,
   collection,
@@ -30,10 +22,7 @@ import {
   List,
   ChevronLeft,
   AlertCircle,
-  LogIn,
-  LogOut,
-  Cloud,
-  CloudOff
+  Cloud
 } from 'lucide-react';
 
 import firebaseConfig from '../firebase-applet-config.json';
@@ -205,7 +194,6 @@ const cleanCurtainDimensions = (str: string): string => {
 };
 
 export default function App() {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -213,35 +201,10 @@ export default function App() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [xlsxLoaded, setXlsxLoaded] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [isUsingCloud, setIsUsingCloud] = useState(false);
-  const [dbMode, setDbMode] = useState<'public_cloud' | 'private_cloud'>(() => {
-    return (localStorage.getItem('db_mode') as 'public_cloud' | 'private_cloud') || 'public_cloud';
-  });
+  const [isUsingCloud, setIsUsingCloud] = useState(true);
 
-  // Track the DB mode selection in local storage
+  // 1. Loader Script Setup
   useEffect(() => {
-    localStorage.setItem('db_mode', dbMode);
-  }, [dbMode]);
-
-  // 1. Authentication Configuration & Loader Script Setup
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        setIsUsingCloud(true);
-        setAuthError(null);
-      } else {
-        setIsUsingCloud(false);
-        try {
-          // Attempt silent anonymous sign-in to keep cloud active seamlessly if enabled
-          await signInAnonymously(auth);
-        } catch (error: any) {
-          console.warn('Anonymous Auth restricted/disabled on this project. Continuing in Public Cloud Mode.', error);
-        }
-      }
-    });
-
     // Load external sheet loader for XLSX client utility
     if (!(window as any).XLSX) {
       const script = document.createElement('script');
@@ -251,22 +214,11 @@ export default function App() {
     } else {
       setXlsxLoaded(true);
     }
-
-    return () => unsubscribe();
   }, []);
 
   // 2. Fetch Projects from Firestore with Offline Caching fallback
   useEffect(() => {
-    let projectsRef;
-    if (dbMode === 'public_cloud') {
-      projectsRef = collection(db, 'projects');
-    } else {
-      if (!user) {
-        setDbMode('public_cloud');
-        return;
-      }
-      projectsRef = collection(db, 'users', user.uid, 'projects');
-    }
+    const projectsRef = collection(db, 'projects');
 
     const unsubscribe = onSnapshot(
       projectsRef,
@@ -288,25 +240,7 @@ export default function App() {
       }
     );
     return () => unsubscribe();
-  }, [user, dbMode]);
-
-  const handleGoogleSignIn = async () => {
-    const provider = new GoogleAuthProvider();
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (err: any) {
-      console.error('Google Sign In Error:', err);
-      alert(`ไม่สามารถเข้าสู่ระบบผ่าน Google: ${err.message || err}`);
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-    } catch (err) {
-      console.error('Sign Out Error:', err);
-    }
-  };
+  }, []);
 
   // 3. Import File to Firestore with robust columns mapping
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -409,31 +343,15 @@ export default function App() {
 
         const batchPromises = Object.values(projectsMap).map(async (project) => {
           project.netTotal = project.netTotal - project.discount_round;
-          if (dbMode === 'public_cloud') {
-            try {
-              await setDoc(doc(db, 'projects', project.quotation_no), project);
-            } catch (writeErr) {
-              console.warn('Firestore write error in public cloud, saving to local cache:', writeErr);
-              saveLocalProjectSingle(project);
-            }
-          } else if (user) {
-            try {
-              await setDoc(doc(db, 'users', user.uid, 'projects', project.quotation_no), project);
-            } catch (writeErr) {
-              console.warn('Firestore write error in private user cloud, saving to local cache:', writeErr);
-              saveLocalProjectSingle(project);
-            }
-          } else {
+          try {
+            await setDoc(doc(db, 'projects', project.quotation_no), project);
+          } catch (writeErr) {
+            console.warn('Firestore write error in public cloud, saving to local cache:', writeErr);
             saveLocalProjectSingle(project);
           }
         });
 
         await Promise.all(batchPromises);
-        if (dbMode !== 'public_cloud' && !user) {
-          // Immediately update state in pure local fallback mode
-          const locals = loadLocalProjects();
-          setProjects(locals);
-        }
         setUploading(false);
         e.target!.value = '';
       } catch (error) {
@@ -449,25 +367,10 @@ export default function App() {
   const deleteProject = async (id: string) => {
     if (!window.confirm('คุณต้องการดำเนินการยืนยันที่จะลบข้อมูลโครงการสั่งผลิตโครงนี้ใช่หรือไม่? บันทึกการใช้ผ้าของโครงการนี้จะหายไปจากระบบอย่างถาวร')) return;
     
-    if (dbMode === 'public_cloud') {
-      try {
-        await deleteDoc(doc(db, 'projects', id));
-      } catch (err) {
-        console.warn('Firestore delete failed in public cloud, falling back to local action:', err);
-        deleteLocalProjectSingle(id);
-        const locals = loadLocalProjects();
-        setProjects(locals);
-      }
-    } else if (user) {
-      try {
-        await deleteDoc(doc(db, 'users', user.uid, 'projects', id));
-      } catch (err) {
-        console.warn('Firestore delete failed in private user cloud, falling back to local action:', err);
-        deleteLocalProjectSingle(id);
-        const locals = loadLocalProjects();
-        setProjects(locals);
-      }
-    } else {
+    try {
+      await deleteDoc(doc(db, 'projects', id));
+    } catch (err) {
+      console.warn('Firestore delete failed in public cloud, falling back to local action:', err);
       deleteLocalProjectSingle(id);
       const locals = loadLocalProjects();
       setProjects(locals);
@@ -516,59 +419,16 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-4">
-              {/* Cloud Database Selector Badge */}
-              <div className="flex items-center gap-2 bg-slate-50/80 px-2.5 py-1 rounded-xl border border-slate-100 select-none">
-                <div className={`p-1.5 rounded-lg ${dbMode === 'public_cloud' ? 'bg-emerald-50 text-emerald-600' : 'bg-indigo-50 text-indigo-600'}`}>
-                  <Cloud className="w-3.5 h-3.5 animate-pulse" />
-                </div>
+              {/* Cloud Database Connected Status Badge */}
+              <div className="flex items-center gap-2 bg-emerald-50/80 px-3 py-1.5 rounded-xl border border-emerald-100 select-none">
+                <Cloud className="w-4 h-4 text-emerald-600 animate-pulse" />
                 <div className="flex flex-col">
-                  <span className="text-[9px] font-black leading-3 text-slate-400 uppercase">DATABASE STATUS</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-extrabold text-slate-700 leading-3">
-                      {dbMode === 'public_cloud' ? 'คลาวด์ร่วมทุกเครื่อง' : 'คลาวด์ส่วนตัว'}
-                    </span>
-                    {user && (
-                      <button 
-                        onClick={() => setDbMode(prev => prev === 'public_cloud' ? 'private_cloud' : 'public_cloud')}
-                        className="text-[9px] font-black text-indigo-600 border border-indigo-100 px-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-center uppercase cursor-pointer"
-                        title="สลับโหมดฐานข้อมูล"
-                      >
-                        สลับ
-                      </button>
-                    )}
-                  </div>
+                  <span className="text-[8px] font-black leading-3 text-emerald-700 tracking-wider uppercase">CLOUD STATUS</span>
+                  <span className="text-[11px] font-extrabold text-slate-700 leading-3">
+                    ออนไลน์ข้อมูลเสถียร
+                  </span>
                 </div>
               </div>
-
-              {/* Authenticated user status vs Google Sign In button */}
-              {user ? (
-                <div className="flex items-center gap-2.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 shrink-0">
-                  <div className="hidden sm:flex flex-col items-end">
-                    <span className="text-[10px] font-extrabold text-slate-700 leading-3 max-w-[120px] truncate" title={user.email || ''}>
-                      {user.displayName || user.email || 'ผู้ใช้คลาวด์'}
-                    </span>
-                    <span className="text-[8px] font-black text-emerald-600 flex items-center gap-0.5 mt-0.5 select-none uppercase">
-                      CLOUD CONNECTED
-                    </span>
-                  </div>
-                  <button
-                    onClick={handleSignOut}
-                    className="p-1.5 bg-white hover:bg-slate-50 text-slate-500 hover:text-red-500 border border-slate-100 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-3xs"
-                    title="ออกจากระบบ"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={handleGoogleSignIn}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100/80 text-indigo-700 rounded-xl text-xs font-extrabold transition-all cursor-pointer border border-indigo-100/50 shadow-3xs shrink-0"
-                  title="เข้าสู่ระบบด้วย Google หากต้องการเปลี่ยนเป็นพื้นที่คลาวด์ส่วนตัว"
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">สลับไปคลาวด์ส่วนตัว</span>
-                </button>
-              )}
 
               <nav className="flex items-center bg-slate-100 p-1 rounded-xl">
                 <button
@@ -626,32 +486,22 @@ export default function App() {
 
       {/* 🚀 Primary Container */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
-        {dbMode === 'public_cloud' && (
-          <div className="mb-6 bg-gradient-to-r from-emerald-50/70 to-teal-50/50 border border-emerald-100 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-3xs animate-fade-in text-slate-700">
-            <div className="flex items-start gap-3">
-              <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-600 shrink-0">
-                <Cloud className="w-5 h-5 text-emerald-600 animate-bounce" />
-              </div>
-              <div>
-                <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                  ระบบเชื่อมต่อฐานข้อมูลคลาวด์เซิร์ฟเวอร์แบบแชร์อุปกรณ์ร่วมกัน (Shared Cloud Active) 
-                  <span className="bg-emerald-500 text-white text-[8px] tracking-widest px-1.5 py-0.5 rounded-full font-black uppercase">ONLINE</span>
-                </span>
-                <span className="text-[11px] font-bold text-slate-500 block mt-1 leading-relaxed">
-                  ฐานข้อมูลโปรดักชันกำลังออนไลน์บนคลาวด์ร่วมทุกเครื่องโดยอัตโนมัติ คุณและทีมงานทุกคนสามารถนำเข้าข้อมูล ลบข้อมูล หรือประเมินสถิติได้พร้อมกันทั่วประเทศอย่างไร้รอยต่อ โดยไม่จำเป็นต้องล็อกอินแยกรายบัญชี หากต้องการพื้นที่คลาวด์แยกส่วนเฉพาะบุคคลเพื่อความปลอดภัย สามารถล็อกอินแยกด้วย Google Account ได้ทุกเมื่อ
-                </span>
-              </div>
+        <div className="mb-6 bg-gradient-to-r from-emerald-50/70 to-teal-50/50 border border-emerald-100/80 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-3xs animate-fade-in text-slate-700">
+          <div className="flex items-start gap-3">
+            <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-600 shrink-0">
+              <Cloud className="w-5 h-5 text-emerald-600 animate-bounce" />
             </div>
-            {!user && (
-              <button
-                onClick={handleGoogleSignIn}
-                className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap shadow-md shadow-slate-900/10 shrink-0"
-              >
-                <LogIn className="w-3.5 h-3.5" /> สมัครคลาวด์ส่วนบุคคล
-              </button>
-            )}
+            <div>
+              <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                ระบบคลาวด์ซิงค์เรียลไทม์ออนไลน์ (Shared Cloud Auto-Sync) 
+                <span className="bg-emerald-500 text-white text-[8px] tracking-widest px-1.5 py-0.5 rounded-full font-black uppercase">ONLINE</span>
+              </span>
+              <span className="text-[11px] font-bold text-slate-500 block mt-1 leading-relaxed">
+                ฐานข้อมูลโปรดักชันออนไลน์เรียลไทม์ผ่าน Vercel / GitHub หรือเว็บเซิร์ฟเวอร์ใดๆ ได้อัตโนมัติ คุณและทีมงานทุกคนสามารถนำเข้าใบแจ้งงาน ค้นหารุ่นผ้า และวิเคราะห์ยอดขายร่วมกันทุกเครื่องได้ทันทีอย่างไร้รอยต่อ โดยไม่ต้องลงชื่อเข้าใช้งาน (No Sign-in Required)
+              </span>
+            </div>
           </div>
-        )}
+        </div>
         {currentView === 'dashboard' && !selectedProject && (
           <DashboardView projects={projects} />
         )}
