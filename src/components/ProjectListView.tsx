@@ -31,12 +31,15 @@ export default function ProjectListView({
   onSelectProject,
   onDeleteProject
 }: ProjectListViewProps) {
-  const filtered = projects.filter(
-    (p) =>
-      p.quotation_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.province && p.province.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filtered = React.useMemo(() => {
+    const query = searchTerm.toLowerCase();
+    return projects.filter(
+      (p) =>
+        p.quotation_no.toLowerCase().includes(query) ||
+        p.customerName.toLowerCase().includes(query) ||
+        (p.province && p.province.toLowerCase().includes(query))
+    );
+  }, [projects, searchTerm]);
 
   return (
     <div className="space-y-6">
