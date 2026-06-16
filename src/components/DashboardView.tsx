@@ -33,7 +33,8 @@ import {
   CartesianGrid,
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
-  LabelList
+  LabelList,
+  Cell
 } from 'recharts';
 import { Project, ProjectItem } from '../types';
 import StatCard from './StatCard';
@@ -139,6 +140,8 @@ export default function DashboardView({ projects }: DashboardViewProps) {
     data: any;
   } | null>(null);
 
+  const [activeAccTab, setActiveAccTab] = useState<'all' | 'roller' | 'venetian'>('all');
+
   // Auto-initialize filters range based on input dataset
   useEffect(() => {
     if (projects.length > 0 && !initializedRange) {
@@ -188,6 +191,8 @@ export default function DashboardView({ projects }: DashboardViewProps) {
     let totalWideSheerFabricYards = 0;
     let totalBlindsSqm = 0;
     let totalBlindsSets = 0;
+    let totalSolidCurtains = 0;
+    let totalSheerCurtains = 0;
 
     const fabricMap: { 
       [key: string]: { 
@@ -282,6 +287,18 @@ export default function DashboardView({ projects }: DashboardViewProps) {
         if (isBlind) {
           totalBlindsSqm += item.qty;
           totalBlindsSets += 1;
+        } else if (item.item_type === 'P') {
+          const isCurtain = !(item.descriptions.includes('ติดตั้ง') || item.descriptions.includes('ขนส่ง') || 
+                            item.descriptions.includes('เดินทาง') || item.descriptions.includes('รื้อถอน') || 
+                            item.descriptions.includes('ซ่อม') || item.descriptions.includes('ราง'));
+          if (isCurtain) {
+            const isSheer = item.descriptions.includes('โปร่ง') || item.descriptions.toUpperCase().includes('SHEER');
+            if (isSheer) {
+              totalSheerCurtains += item.qty;
+            } else {
+              totalSolidCurtains += item.qty;
+            }
+          }
         }
       });
     });
@@ -325,6 +342,8 @@ export default function DashboardView({ projects }: DashboardViewProps) {
       totalWideSheerFabricYards,
       totalBlindsSqm,
       totalBlindsSets,
+      totalSolidCurtains,
+      totalSheerCurtains,
       fabricMap,
       provinceMap,
       employeeMap,
@@ -350,6 +369,8 @@ export default function DashboardView({ projects }: DashboardViewProps) {
     totalWideSheerFabricYards,
     totalBlindsSqm,
     totalBlindsSets,
+    totalSolidCurtains,
+    totalSheerCurtains,
     fabricMap,
     provinceMap,
     employeeMap,
@@ -525,6 +546,7 @@ export default function DashboardView({ projects }: DashboardViewProps) {
       });
     });
 
+    setActiveAccTab('all');
     setDrilldown({
       type: 'accessory_contrib',
       title: 'เจาะลึกอุปกรณ์ประกอบ และรางม่านมู่ลี่ (A)',
@@ -537,10 +559,17 @@ export default function DashboardView({ projects }: DashboardViewProps) {
   const wideBlackRatio = totalNetSales > 0 ? (totalWideBlackoutFabricYards / totalNetSales) : (100 / 100000);
   const wideShRatio = totalNetSales > 0 ? (totalWideSheerFabricYards / totalNetSales) : (27 / 100000);
 
+  const solidCurtainRatio = totalNetSales > 0 ? (totalSolidCurtains / totalNetSales) : (60 / 100000);
+  const sheerCurtainRatio = totalNetSales > 0 ? (totalSheerCurtains / totalNetSales) : (45 / 100000);
+
   const estimatedNormal = targetRevenue * normRatio;
   const estimatedWideBlackout = targetRevenue * wideBlackRatio;
   const estimatedWideSheer = targetRevenue * wideShRatio;
   const estimatedTotal = estimatedNormal + estimatedWideBlackout + estimatedWideSheer;
+
+  const estimatedSolidCurtains = targetRevenue * solidCurtainRatio;
+  const estimatedSheerCurtains = targetRevenue * sheerCurtainRatio;
+  const estimatedTotalCurtains = estimatedSolidCurtains + estimatedSheerCurtains;
 
   return (
     <div className="space-y-8 animate-fade-in" id="dashboard-view-root">
@@ -781,7 +810,7 @@ export default function DashboardView({ projects }: DashboardViewProps) {
                 <Calculator className="w-5 h-5 text-white" />
               </div>
               <h3 className="text-md font-extrabold text-white tracking-wide">
-                เครื่องมือประเมินความต้องการใช้วัตถุดิบผ้าอัตโนมัติ (Dynamic Fabric Estimation)
+                เครื่องมือประเมินความต้องการใช้วัตถุดิบผ้าอัตโนมัติ (Dynamic Fabric Estimation & Pieces)
               </h3>
             </div>
             <p className="text-xs text-slate-300 leading-relaxed text-justify">
@@ -789,7 +818,9 @@ export default function DashboardView({ projects }: DashboardViewProps) {
               <span className="font-extrabold text-emerald-400 ml-1">100,000 บาท</span> จะใช้วัตถุดิบผ้าปกติเฉลี่ย 
               <span className="font-bold text-indigo-300 mx-1">{formatNumber(normRatio * 100000, 1)} หลา</span>, 
               ทึบหน้ากว้าง <span className="font-bold text-indigo-300 mx-1">{formatNumber(wideBlackRatio * 100000, 1)} หลา</span> 
+              (ถัวเฉลี่ย <span className="font-bold text-blue-300">{formatNumber(solidCurtainRatio * 100000, 1)} ผืน</span>) 
               และโปร่งหน้ากว้าง <span className="font-bold text-indigo-300 mx-1">{formatNumber(wideShRatio * 100000, 1)} หลา</span>
+              (ถัวเฉลี่ย <span className="font-bold text-teal-300">{formatNumber(sheerCurtainRatio * 100000, 1)} ผืน</span>)
             </p>
             <div className="pt-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1.5">
@@ -824,6 +855,9 @@ export default function DashboardView({ projects }: DashboardViewProps) {
               <div>
                 <p className="text-xl font-black text-white">{formatNumber(estimatedWideBlackout, 1)}</p>
                 <span className="text-[10px] font-bold text-slate-400">หลา</span>
+                <div className="mt-1.5 pt-1.5 border-t border-slate-700/40 text-[10.5px] font-black text-blue-200">
+                  🎯 ประเมิน {formatNumber(Math.max(0, estimatedSolidCurtains), 0)} ผืน
+                </div>
               </div>
             </div>
 
@@ -832,6 +866,9 @@ export default function DashboardView({ projects }: DashboardViewProps) {
               <div>
                 <p className="text-xl font-black text-white">{formatNumber(estimatedWideSheer, 1)}</p>
                 <span className="text-[10px] font-bold text-slate-400">หลา</span>
+                <div className="mt-1.5 pt-1.5 border-t border-slate-700/40 text-[10.5px] font-black text-teal-200">
+                  🎯 ประเมิน {formatNumber(Math.max(0, estimatedSheerCurtains), 0)} ผืน
+                </div>
               </div>
             </div>
 
@@ -840,6 +877,9 @@ export default function DashboardView({ projects }: DashboardViewProps) {
               <div>
                 <p className="text-xl font-black text-emerald-400">{formatNumber(estimatedTotal, 1)}</p>
                 <span className="text-[10px] font-extrabold text-slate-300">หลารวมทั้งหมด</span>
+                <div className="mt-1.5 pt-1.5 border-t border-indigo-400/40 text-[10.5px] font-black text-emerald-200">
+                  📦 รวม {formatNumber(Math.max(0, estimatedTotalCurtains), 0)} ผืน
+                </div>
               </div>
             </div>
 
@@ -1490,66 +1530,818 @@ export default function DashboardView({ projects }: DashboardViewProps) {
                 )}
 
                 {/* C. SEWING breakdown (onDoubleClick 'ค่าตัดเย็บ & บริการ (P)') */}
-                {drilldown.type === 'sewing_contrib' && (
-                  <div className="overflow-x-auto rounded-2xl border border-slate-100">
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-slate-50 text-slate-400 font-bold border-b border-slate-100 text-[10px]">
-                        <tr>
-                          <th className="px-4 py-3">ใบงานอ้างอิง / ลูกค้า</th>
-                          <th className="px-4 py-3">รายการคำสั่งที่ป้อนในระบบ</th>
-                          <th className="px-4 py-3">ตำแหน่งห้อง</th>
-                          <th className="px-4 py-3 text-right">จำนวนหน่วยบริการ</th>
-                          <th className="px-4 py-3 text-right">มูลค่ารวมหลังหักส่วนลด</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-medium">
-                        {drilldown.data.map((item: any, idx: number) => (
-                          <tr key={idx} className="hover:bg-slate-50/55">
-                            <td className="px-4 py-3">
-                              <span className="font-bold text-slate-800 block">{item.quotationNo}</span>
-                              <span className="text-[10px] text-slate-400 font-bold">{item.customer}</span>
-                            </td>
-                            <td className="px-4 py-3 font-semibold text-slate-600 text-[12px]">{item.desc}</td>
-                            <td className="px-4 py-3 text-slate-405 font-bold">{item.room}</td>
-                            <td className="px-4 py-3 text-right font-bold text-blue-600">{formatNumber(item.qty)} {item.unit}</td>
-                            <td className="px-4 py-3 text-right font-black text-emerald-600">{formatCurrency(item.total)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                {drilldown.type === 'sewing_contrib' && (() => {
+                  const curtainItems = drilldown.data.filter((item: any) => {
+                    return isCurtainSewing(item.desc);
+                  });
+
+                  const aggregatedMap: { [key: string]: { name: string; qty: number; type: 'ทึบ' | 'โปร่ง'; sewingStyle: string } } = {};
+                  let totalCurtainsCount = 0;
+                  let totalSolidCount = 0;
+                  let totalSheerCount = 0;
+
+                  curtainItems.forEach((item: any) => {
+                    const desc = item.desc || '';
+                    const isSheer = isSheerCurtain(desc);
+                    const category = isSheer ? 'ผ้าม่านโปร่ง' : 'ผ้าม่านทึบ';
+                    const style = classifySewingStyle(desc);
+                    const key = `${category} - ${style}`;
+
+                    totalCurtainsCount += item.qty;
+                    if (isSheer) {
+                      totalSheerCount += item.qty;
+                    } else {
+                      totalSolidCount += item.qty;
+                    }
+
+                    if (!aggregatedMap[key]) {
+                      aggregatedMap[key] = {
+                        name: key,
+                        qty: 0,
+                        type: isSheer ? 'โปร่ง' : 'ทึบ',
+                        sewingStyle: style
+                      };
+                    }
+                    aggregatedMap[key].qty += item.qty;
+                  });
+
+                  const chartDataList = Object.values(aggregatedMap).sort((a, b) => b.qty - a.qty);
+
+                  return (
+                    <div className="space-y-6">
+                      {/* KPI cards in the sewing drilldown */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-slate-900 text-white rounded-2xl p-4 md:p-5 border border-slate-800 shadow-sm">
+                          <span className="text-[10px] font-black tracking-wider uppercase text-slate-400 block mb-1">
+                            จำนวนรวมผ้าม่านทั้งหมด
+                          </span>
+                          <p className="text-2xl font-black text-white">
+                            {formatNumber(totalCurtainsCount, 0)} <span className="text-xs font-bold text-slate-300">ผืน</span>
+                          </p>
+                          <p className="text-[10px] text-indigo-300 font-bold mt-1">คัดเฉพาะใบเสนอราคาตัดผ้าจริงในระบบ</p>
+                        </div>
+
+                        <div className="bg-indigo-50 border border-indigo-150 rounded-2xl p-4 md:p-5 shadow-3xs">
+                          <span className="text-[10px] font-black tracking-wider uppercase text-indigo-700 block mb-1">
+                            ผ้าม่านทึบสะสม
+                          </span>
+                          <p className="text-2xl font-black text-indigo-900">
+                            {formatNumber(totalSolidCount, 0)} <span className="text-xs font-bold text-indigo-550">ผืน</span>
+                          </p>
+                          <p className="text-[10px] text-indigo-500 font-bold mt-1">
+                            คิดเป็น {totalCurtainsCount > 0 ? formatNumber((totalSolidCount / totalCurtainsCount) * 100, 1) : 0}% ของทั้งหมด
+                          </p>
+                        </div>
+
+                        <div className="bg-teal-50 border border-teal-150 rounded-2xl p-4 md:p-5 shadow-3xs">
+                          <span className="text-[10px] font-black tracking-wider uppercase text-teal-700 block mb-1">
+                            ผ้าม่านโปร่งสะสม
+                          </span>
+                          <p className="text-2xl font-black text-teal-900">
+                            {formatNumber(totalSheerCount, 0)} <span className="text-xs font-bold text-teal-550">ผืน</span>
+                          </p>
+                          <p className="text-[10px] text-teal-500 font-bold mt-1">
+                            คิดเป็น {totalCurtainsCount > 0 ? formatNumber((totalSheerCount / totalCurtainsCount) * 100, 1) : 0}% ของทั้งหมด
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Separated Charts Grid */}
+                      {chartDataList.length > 0 ? (() => {
+                        const solidData = chartDataList.filter(item => item.type === 'ทึบ').sort((a, b) => b.qty - a.qty);
+                        const sheerData = chartDataList.filter(item => item.type === 'โปร่ง').sort((a, b) => b.qty - a.qty);
+
+                        const solidHeight = Math.max(140, solidData.length * 40 + 60);
+                        const sheerHeight = Math.max(140, sheerData.length * 40 + 60);
+
+                        return (
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Solid Curtains Chart */}
+                            <div className="bg-indigo-50/30 border border-indigo-100 p-5 rounded-2xl flex flex-col justify-between">
+                              <div>
+                                <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-700 inline-block"></span>
+                                  ผ้าม่านทึบ (Solid Curtains)
+                                </h4>
+                                <p className="text-[10px] text-slate-400 font-bold mb-4">จัดอันดับรูปแบบการตัดเย็บของม่านทึบสะสม</p>
+                              </div>
+                              
+                              {solidData.length > 0 ? (
+                                <div className="w-full" style={{ minHeight: `${solidHeight}px` }}>
+                                  <ResponsiveContainer width="100%" height={solidHeight}>
+                                    <BarChart
+                                      data={solidData}
+                                      layout="vertical"
+                                      margin={{ top: 10, right: 60, left: 10, bottom: 5 }}
+                                    >
+                                      <CartesianGrid strokeDasharray="3 3" horizontal={false} vertical={true} stroke="#E2E8F0" />
+                                      <XAxis type="number" hide />
+                                      <YAxis
+                                        dataKey="sewingStyle"
+                                        type="category"
+                                        width={100}
+                                        tick={{ fontSize: 10.5, fill: '#3730a3', fontWeight: 900 }}
+                                        axisLine={false}
+                                        tickLine={false}
+                                      />
+                                      <RechartsTooltip
+                                        formatter={(value: any) => [`${formatNumber(value, 0)} ผืน`, 'ปริมาณผลิต']}
+                                        contentStyle={{ borderRadius: '12px', border: '1px solid #E2E8F0', fontSize: '11px', fontWeight: 'bold' }}
+                                      />
+                                      <Bar dataKey="qty" radius={[0, 4, 4, 0]} barSize={16}>
+                                        {solidData.map((entry, index) => (
+                                          <Cell key={`cell-${index}`} fill="#312e81" />
+                                        ))}
+                                        <LabelList
+                                          dataKey="qty"
+                                          position="right"
+                                          formatter={(v: any) => `${formatNumber(v, 0)} ผืน`}
+                                          style={{ fill: '#312e81', fontSize: 10.5, fontWeight: 900, fontFamily: 'monospace' }}
+                                        />
+                                      </Bar>
+                                    </BarChart>
+                                  </ResponsiveContainer>
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-slate-400 py-6 text-center font-bold">ไม่มีข้อมูลการผลิตม่านทึบกระบวนการนี้</p>
+                              )}
+                            </div>
+
+                            {/* Sheer Curtains Chart */}
+                            <div className="bg-teal-50/30 border border-teal-100 p-5 rounded-2xl flex flex-col justify-between">
+                              <div>
+                                <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block"></span>
+                                  ผ้าม่านโปร่ง (Sheer Curtains)
+                                </h4>
+                                <p className="text-[10px] text-slate-400 font-bold mb-4">จัดอันดับรูปแบบการตัดเย็บของม่านโปร่งสะสม</p>
+                              </div>
+
+                              {sheerData.length > 0 ? (
+                                <div className="w-full" style={{ minHeight: `${sheerHeight}px` }}>
+                                  <ResponsiveContainer width="100%" height={sheerHeight}>
+                                    <BarChart
+                                      data={sheerData}
+                                      layout="vertical"
+                                      margin={{ top: 10, right: 60, left: 10, bottom: 5 }}
+                                    >
+                                      <CartesianGrid strokeDasharray="3 3" horizontal={false} vertical={true} stroke="#E2E8F0" />
+                                      <XAxis type="number" hide />
+                                      <YAxis
+                                        dataKey="sewingStyle"
+                                        type="category"
+                                        width={100}
+                                        tick={{ fontSize: 10.5, fill: '#0d9488', fontWeight: 900 }}
+                                        axisLine={false}
+                                        tickLine={false}
+                                      />
+                                      <RechartsTooltip
+                                        formatter={(value: any) => [`${formatNumber(value, 0)} ผืน`, 'ปริมาณผลิต']}
+                                        contentStyle={{ borderRadius: '12px', border: '1px solid #E2E8F0', fontSize: '11px', fontWeight: 'bold' }}
+                                      />
+                                      <Bar dataKey="qty" radius={[0, 4, 4, 0]} barSize={16}>
+                                        {sheerData.map((entry, index) => (
+                                          <Cell key={`cell-${index}`} fill="#0d9488" />
+                                        ))}
+                                        <LabelList
+                                          dataKey="qty"
+                                          position="right"
+                                          formatter={(v: any) => `${formatNumber(v, 0)} ผืน`}
+                                          style={{ fill: '#0d9488', fontSize: 10.5, fontWeight: 900, fontFamily: 'monospace' }}
+                                        />
+                                      </Bar>
+                                    </BarChart>
+                                  </ResponsiveContainer>
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-slate-400 py-6 text-center font-bold">ไม่มีข้อมูลการผลิตม่านโปร่งกระบวนการนี้</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })() : (
+                        <div className="p-8 bg-slate-50 border border-slate-200 rounded-2xl text-center text-slate-400 font-bold">
+                          ไม่มีข้อมูลปริมาณผ้าม่านในช่วงเวลาที่เลือกบัดนี้
+                        </div>
+                      )}
+
+                      {/* Raw Details Table */}
+                      <div className="space-y-3">
+                        <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider block">
+                          📋 รายละเอียดบันทึกรายห้อง และราคาบริการตัดเย็บ (Database Service Logging)
+                        </h4>
+                        <div className="overflow-x-auto rounded-2xl border border-slate-100 max-h-[300px] overflow-y-auto">
+                          <table className="w-full text-xs text-left">
+                            <thead className="bg-slate-50 text-slate-400 font-bold border-b border-slate-100 text-[10px] sticky top-0">
+                              <tr>
+                                <th className="px-4 py-3 bg-slate-50">ใบงานอ้างอิง / ลูกค้า</th>
+                                <th className="px-4 py-3 bg-slate-50">รายการในใบเสนอราคา</th>
+                                <th className="px-4 py-3 bg-slate-50">สัดส่วนประเภท</th>
+                                <th className="px-4 py-3 bg-slate-50">ตำแหน่งห้อง</th>
+                                <th className="px-4 py-3 text-right bg-slate-50">จำนวนหน่วยบริการ</th>
+                                <th className="px-4 py-3 text-right bg-slate-50">มูลค่าหลังหักส่วนลด</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-medium">
+                              {drilldown.data.map((item: any, idx: number) => {
+                                const isSheer = isSheerCurtain(item.desc);
+                                const isMyCurtain = isCurtainSewing(item.desc);
+                                return (
+                                  <tr key={idx} className="hover:bg-slate-50/55">
+                                    <td className="px-4 py-3">
+                                      <span className="font-bold text-slate-800 block">{item.quotationNo}</span>
+                                      <span className="text-[10px] text-slate-400 font-bold">{item.customer}</span>
+                                    </td>
+                                    <td className="px-4 py-3 font-semibold text-slate-600 text-[11.5px]">{item.desc}</td>
+                                    <td className="px-4 py-3">
+                                      {!isMyCurtain ? (
+                                        <span className="text-[9.5px] font-bold px-2 py-0.5 bg-slate-100 text-slate-450 rounded border border-slate-200">
+                                          บริการอื่นๆ / ม่านสำเร็จ
+                                        </span>
+                                      ) : isSheer ? (
+                                        <span className="text-[9.5px] font-black px-2 py-0.5 bg-teal-50 text-teal-700 rounded border border-teal-100">
+                                          ผ้าม่านโปร่ง
+                                        </span>
+                                      ) : (
+                                        <span className="text-[9.5px] font-black px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-100">
+                                          ผ้าม่านทึบ
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-3 text-slate-405 font-bold">{item.room}</td>
+                                    <td className="px-4 py-3 text-right font-bold text-blue-600">{formatNumber(item.qty)} {item.unit}</td>
+                                    <td className="px-4 py-3 text-right font-black text-emerald-600">{formatCurrency(item.total)}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* D. ACCESSORY breakdown (onDoubleClick 'ค่าราง & อุปกรณ์ (A)') */}
-                {drilldown.type === 'accessory_contrib' && (
-                  <div className="overflow-x-auto rounded-2xl border border-slate-100">
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-slate-50 text-slate-400 font-bold border-b border-slate-100 text-[10px]">
-                        <tr>
-                          <th className="px-4 py-3">ใบงานอ้างอิง / ลูกค้า</th>
-                          <th className="px-4 py-3">อุปกรณ์ประกอบ และรางม่านมู่ลี่</th>
-                          <th className="px-4 py-3">คำพิกัดห้อง</th>
-                          <th className="px-4 py-3 text-right">จำนวนจัดใช้</th>
-                          <th className="px-4 py-3 text-right">มูลค่ารวมหลังส่วนลด</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-medium">
-                        {drilldown.data.map((item: any, idx: number) => (
-                          <tr key={idx} className="hover:bg-slate-50/55">
-                            <td className="px-4 py-3">
-                              <span className="font-bold text-slate-800 block">{item.quotationNo}</span>
-                              <span className="text-[10px] text-slate-400 font-bold">{item.customer}</span>
-                            </td>
-                            <td className="px-4 py-3 font-semibold text-slate-650">{item.desc}</td>
-                            <td className="px-4 py-3 text-slate-405 font-bold">{item.room}</td>
-                            <td className="px-4 py-3 text-right font-bold text-amber-600">{formatNumber(item.qty)} {item.unit}</td>
-                            <td className="px-4 py-3 text-right font-black text-emerald-600">{formatCurrency(item.total)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                {drilldown.type === 'accessory_contrib' && (() => {
+                  const allAccItems = drilldown.data || [];
+                  const rollerBlinds = allAccItems.filter((item: any) => isRollerBlind(item.desc));
+                  const venetianBlinds = allAccItems.filter((item: any) => isVenetianBlind(item.desc));
+                  const railsAndAccessories = allAccItems.filter((item: any) => !isRollerBlind(item.desc) && !isVenetianBlind(item.desc));
+
+                  // Calculate stats
+                  const totalRollersValue = rollerBlinds.reduce((sum: number, x: any) => sum + x.total, 0);
+                  const totalRollersQty = rollerBlinds.reduce((sum: number, x: any) => sum + x.qty, 0);
+                  const totalVenetiansValue = venetianBlinds.reduce((sum: number, x: any) => sum + x.total, 0);
+                  const totalVenetiansQty = venetianBlinds.reduce((sum: number, x: any) => sum + x.qty, 0);
+                  const totalGeneralValue = railsAndAccessories.reduce((sum: number, x: any) => sum + x.total, 0);
+                  const totalGeneralQty = railsAndAccessories.reduce((sum: number, x: any) => sum + x.qty, 0);
+
+                  // Group/Aggregate generic tracks and accessories
+                  const trackAgg: { [key: string]: { desc: string; qty: number; unit: string; total: number; bookings: number } } = {};
+                  railsAndAccessories.forEach((item: any) => {
+                    const cleanName = item.desc.trim();
+                    if (!trackAgg[cleanName]) {
+                      trackAgg[cleanName] = { desc: cleanName, qty: 0, unit: item.unit || 'เมตร', total: 0, bookings: 0 };
+                    }
+                    trackAgg[cleanName].qty += item.qty;
+                    trackAgg[cleanName].total += item.total;
+                    trackAgg[cleanName].bookings += 1;
+                  });
+
+                  const sortedTracks = Object.values(trackAgg).sort((a, b) => b.total - a.total);
+
+                  // Group/Aggregate Roller Blinds
+                  const rollerAgg: { [key: string]: { desc: string; qty: number; unit: string; total: number; bookings: number } } = {};
+                  rollerBlinds.forEach((item: any) => {
+                    const cleanName = item.desc.trim();
+                    if (!rollerAgg[cleanName]) {
+                      rollerAgg[cleanName] = { desc: cleanName, qty: 0, unit: item.unit || 'ชุด', total: 0, bookings: 0 };
+                    }
+                    rollerAgg[cleanName].qty += item.qty;
+                    rollerAgg[cleanName].total += item.total;
+                    rollerAgg[cleanName].bookings += 1;
+                  });
+                  const sortedRollers = Object.values(rollerAgg).sort((a, b) => b.qty - a.qty);
+
+                  // Group/Aggregate Venetian Blinds
+                  const venetianAgg: { [key: string]: { desc: string; qty: number; unit: string; total: number; bookings: number } } = {};
+                  venetianBlinds.forEach((item: any) => {
+                    const cleanName = item.desc.trim();
+                    if (!venetianAgg[cleanName]) {
+                      venetianAgg[cleanName] = { desc: cleanName, qty: 0, unit: item.unit || 'ชุด', total: 0, bookings: 0 };
+                    }
+                    venetianAgg[cleanName].qty += item.qty;
+                    venetianAgg[cleanName].total += item.total;
+                    venetianAgg[cleanName].bookings += 1;
+                  });
+                  const sortedVenetians = Object.values(venetianAgg).sort((a, b) => b.qty - a.qty);
+
+                  return (
+                    <div className="space-y-6">
+                      {/* Interactive Selection Guide */}
+                      <p className="text-[11px] font-black text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-xl p-3 flex items-center gap-2">
+                        <span>💡 คำแนะนำ:</span>
+                        <span>ท่านสามารถกดเลือกกดที่บัตรสรุปด้านล่าง (รางทั่วไป / ม่านม้วน / มู่ลี่) เพื่อเลือกสลับการดูสินค้าสรุปสะสมเรียงตามจำนวนที่จำหน่ายจากมากไปน้อยแบบเจาะลึกได้ในทันที!</span>
+                      </p>
+
+                      {/* Summary KPI Cards */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Tab 1: Rails & Accessories */}
+                        <div
+                          onClick={() => setActiveAccTab('all')}
+                          className={`rounded-2xl p-4 shadow-3xs cursor-pointer select-none transition-all duration-300 transform active:scale-95 ${
+                            activeAccTab === 'all'
+                              ? 'bg-slate-900 border border-slate-800 ring-2 ring-indigo-500 ring-offset-2 scale-[1.02] text-white'
+                              : 'bg-slate-950/80 border border-slate-900 opacity-60 saturate-50 hover:opacity-90 hover:scale-[1.01] text-white/90'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-1">
+                            <span className="text-[10px] font-black tracking-wider uppercase text-slate-400 block">
+                              รางและอุปกรณ์ประกอบทั่วไป
+                            </span>
+                            {activeAccTab === 'all' && (
+                              <span className="text-[9px] font-black bg-indigo-600 text-amber-300 px-1.5 py-0.5 rounded-md animate-pulse">กำลังเลือกคำนวณ</span>
+                            )}
+                          </div>
+                          <p className="text-xl font-black text-amber-400">
+                            {formatCurrency(totalGeneralValue)}
+                          </p>
+                          <p className="text-[10px] text-slate-350 font-bold mt-1">
+                            จำนวนรวม {formatNumber(totalGeneralQty, 1)} หน่วยบริการ
+                          </p>
+                        </div>
+
+                        {/* Tab 2: Roller Blinds */}
+                        <div
+                          onClick={() => setActiveAccTab('roller')}
+                          className={`rounded-2xl p-4 cursor-pointer select-none transition-all duration-300 transform active:scale-95 ${
+                            activeAccTab === 'roller'
+                              ? 'bg-sky-100/95 border-2 border-sky-400 ring-2 ring-sky-500 ring-offset-2 scale-[1.02] shadow-md'
+                              : 'bg-sky-50 border border-sky-150 opacity-60 saturate-50 hover:opacity-95 hover:scale-[1.01]'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-1">
+                            <span className={`text-[10px] font-black tracking-wider uppercase block ${
+                              activeAccTab === 'roller' ? 'text-sky-900' : 'text-sky-700'
+                            }`}>
+                              ม่านม้วนสะสม (Roller Blinds)
+                            </span>
+                            {activeAccTab === 'roller' && (
+                              <span className="text-[9px] font-black bg-sky-600 text-white px-1.5 py-0.5 rounded-md animate-pulse">กำลังเลือกคำนวณ</span>
+                            )}
+                          </div>
+                          <p className="text-xl font-black text-sky-950">
+                            {formatCurrency(totalRollersValue)}
+                          </p>
+                          <p className="text-[10px] text-sky-600 font-bold mt-1">
+                            จำนวนสะสม {formatNumber(totalRollersQty, 0)} ผืน/ชุด
+                          </p>
+                        </div>
+
+                        {/* Tab 3: Venetian Blinds */}
+                        <div
+                          onClick={() => setActiveAccTab('venetian')}
+                          className={`rounded-2xl p-4 cursor-pointer select-none transition-all duration-300 transform active:scale-95 ${
+                            activeAccTab === 'venetian'
+                              ? 'bg-amber-100/95 border-2 border-amber-400 ring-2 ring-amber-500 ring-offset-2 scale-[1.02] shadow-md'
+                              : 'bg-amber-50 border border-amber-150 opacity-60 saturate-50 hover:opacity-95 hover:scale-[1.01]'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-1">
+                            <span className={`text-[10px] font-black tracking-wider uppercase block ${
+                              activeAccTab === 'venetian' ? 'text-amber-900' : 'text-amber-700'
+                            }`}>
+                              มู่ลี่สะสม (Venetian Blinds)
+                            </span>
+                            {activeAccTab === 'venetian' && (
+                              <span className="text-[9px] font-black bg-amber-600 text-white px-1.5 py-0.5 rounded-md animate-pulse">กำลังเลือกคำนวณ</span>
+                            )}
+                          </div>
+                          <p className="text-xl font-black text-amber-950">
+                            {formatCurrency(totalVenetiansValue)}
+                          </p>
+                          <p className="text-[10px] text-amber-600 font-bold mt-1">
+                            จำนวนสะสม {formatNumber(totalVenetiansQty, 0)} ผืน/ชุด
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Content sections based on activeAccTab */}
+                      {activeAccTab === 'all' && (
+                        <>
+                          {/* Top Tracks/Rails Summary Table */}
+                          <div className="space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-slate-50 border border-slate-150 p-4 rounded-xl gap-2">
+                              <div>
+                                <h4 className="text-xs font-black text-slate-705 uppercase tracking-wider flex items-center gap-1.5">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block animate-pulse"></span>
+                                  วิเคราะห์สถิติยอดจำหน่ายรางและอุปกรณ์ประกอบทั่วไป (เรียงตามมูลค่ารวมจากมากไปน้อย)
+                                </h4>
+                                <p className="text-[10px] text-slate-400 font-bold mt-0.5">
+                                  สรุปว่าราง/อุปกรณ์ประเภทใดถูกจัดใช้สูงสุดในระบบในช่วงเวลาที่เลือกบัดนี้
+                                </p>
+                              </div>
+                              <span className="text-[10px] font-black bg-indigo-55 text-indigo-700 border border-indigo-150 px-2.5 py-1 rounded-md self-start sm:self-auto">
+                                รวม {sortedTracks.length} ชนิดรายการ
+                              </span>
+                            </div>
+
+                            {sortedTracks.length > 0 ? (
+                              <div className="overflow-x-auto rounded-xl border border-slate-100 max-h-[250px] overflow-y-auto">
+                                <table className="w-full text-xs text-left">
+                                  <thead className="bg-slate-50 text-slate-400 font-bold border-b border-slate-100 text-[10px] sticky top-0 z-10">
+                                    <tr>
+                                      <th className="px-4 py-3 bg-slate-50 w-12 text-center text-[10px]">อันดับ</th>
+                                      <th className="px-4 py-3 bg-slate-50">แบบประเภทรางและอุปกรณ์ประกอบ</th>
+                                      <th className="px-4 py-3 text-right bg-slate-50">จำนวนหน่วย</th>
+                                      <th className="px-4 py-3 text-right bg-slate-50">จำนวนคำสั่งผลิต</th>
+                                      <th className="px-4 py-3 text-right bg-slate-50">มูลค่ารวมสะสม</th>
+                                      <th className="px-4 py-3 text-right bg-slate-50">สัดส่วนยอดขาย</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 font-medium pb-2">
+                                    {sortedTracks.map((item, idx) => {
+                                      const ratio = totalGeneralValue > 0 ? (item.total / totalGeneralValue) * 100 : 0;
+                                      return (
+                                        <tr key={idx} className="hover:bg-slate-50/50">
+                                          <td className="px-4 py-3 text-center">
+                                            <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[9.5px] font-black ${
+                                              idx === 0 ? 'bg-amber-100 text-amber-700' :
+                                              idx === 1 ? 'bg-slate-200 text-slate-700' :
+                                              idx === 2 ? 'bg-orange-100 text-orange-700' :
+                                              'bg-slate-100 text-slate-400'
+                                            }`}>
+                                              {idx + 1}
+                                            </span>
+                                          </td>
+                                          <td className="px-4 py-3">
+                                            <span className="font-extrabold text-slate-750 block">{item.desc}</span>
+                                          </td>
+                                          <td className="px-4 py-3 text-right text-indigo-700 font-bold">
+                                            {formatNumber(item.qty, 1)} {item.unit}
+                                          </td>
+                                          <td className="px-4 py-3 text-right text-slate-400 font-semibold">{item.bookings} ครั้ง</td>
+                                          <td className="px-4 py-3 text-right font-black text-emerald-600">
+                                            {formatCurrency(item.total)}
+                                          </td>
+                                          <td className="px-4 py-3 text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                              <div className="w-12 bg-slate-200/60 rounded-full h-2 overflow-hidden">
+                                                <div className="bg-amber-500 h-full rounded-full" style={{ width: `${ratio}%` }}></div>
+                                              </div>
+                                              <span className="text-[10px] font-mono text-slate-450 font-black w-8 text-right">
+                                                {formatNumber(ratio, 1)}%
+                                              </span>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              <div className="p-4 text-center bg-slate-50 border border-slate-150 rounded-xl text-slate-400 font-bold">
+                                ไม่มีข้อมูลรายการรางและอุปกรณ์จัดส่งในช่วงเวลานี้
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Split Grid for Roller Blinds & Venetian Blinds */}
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-2">
+                            {/* Roller Blinds Table */}
+                            <div className="space-y-3">
+                              <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2">
+                                <span className="w-3 h-3 rounded-md bg-sky-500 inline-block shrink-0"></span>
+                                ตารางข้อมูลม่านม้วน (Roller Blinds Details)
+                              </h4>
+
+                              {rollerBlinds.length > 0 ? (
+                                <div className="overflow-x-auto rounded-xl border border-slate-100 max-h-[300px] overflow-y-auto">
+                                  <table className="w-full text-[11px] text-left">
+                                    <thead className="bg-slate-50 text-slate-400 font-bold border-b border-slate-100 text-[10px] sticky top-0 z-10">
+                                      <tr>
+                                        <th className="px-3 py-2.5 bg-slate-50">ใบงานอ้างอิง / ลูกค้า</th>
+                                        <th className="px-3 py-2.5 bg-slate-50">รายละเอียดผืนม่านม้วน</th>
+                                        <th className="px-3 py-2.5 bg-slate-50 text-right">จำนวน</th>
+                                        <th className="px-3 py-2.5 bg-slate-50 text-right">สุทธิหลังลด</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 font-medium">
+                                      {rollerBlinds.map((item, idx) => (
+                                        <tr key={idx} className="hover:bg-slate-50/55">
+                                          <td className="px-3 py-2.5">
+                                            <span className="font-bold text-slate-805 block text-[10px]">{item.quotationNo}</span>
+                                            <span className="text-[9.5px] text-slate-400 font-semibold block">{item.customer}</span>
+                                          </td>
+                                          <td className="px-3 py-2.5">
+                                            <span className="font-semibold text-slate-650 block leading-tight">{item.desc}</span>
+                                            <span className="text-[9.5px] text-slate-450 block font-bold mt-0.5">ห้อง: {item.room}</span>
+                                          </td>
+                                          <td className="px-3 py-2.5 text-right font-black text-sky-700">{formatNumber(item.qty, 1)} {item.unit}</td>
+                                          <td className="px-3 py-2.5 text-right font-black text-emerald-600">{formatCurrency(item.total)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <div className="p-8 text-center bg-slate-50/45 border border-slate-150 rounded-xl text-slate-400 font-bold">
+                                  ไม่มีบันทึกข้อมูลม่านม้วนในช่วงเวลานี้
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Venetian Blinds Table */}
+                            <div className="space-y-3">
+                              <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2">
+                                <span className="w-3 h-3 rounded-md bg-amber-500 inline-block shrink-0"></span>
+                                ตารางข้อมูลมู่ลี่ (Venetian Blinds Details)
+                              </h4>
+
+                              {venetianBlinds.length > 0 ? (
+                                <div className="overflow-x-auto rounded-xl border border-slate-100 max-h-[300px] overflow-y-auto">
+                                  <table className="w-full text-[11px] text-left">
+                                    <thead className="bg-slate-50 text-slate-400 font-bold border-b border-slate-100 text-[10px] sticky top-0 z-10">
+                                      <tr>
+                                        <th className="px-3 py-2.5 bg-slate-50">ใบงานอ้างอิง / ลูกค้า</th>
+                                        <th className="px-3 py-2.5 bg-slate-50">รายละเอียดตัวมู่ลี่</th>
+                                        <th className="px-3 py-2.5 bg-slate-50 text-right">จำนวน</th>
+                                        <th className="px-3 py-2.5 bg-slate-50 text-right">สุทธิหลังลด</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 font-medium">
+                                      {venetianBlinds.map((item, idx) => (
+                                        <tr key={idx} className="hover:bg-slate-50/55">
+                                          <td className="px-3 py-2.5">
+                                            <span className="font-bold text-slate-805 block text-[10px]">{item.quotationNo}</span>
+                                            <span className="text-[9.5px] text-slate-400 font-semibold block">{item.customer}</span>
+                                          </td>
+                                          <td className="px-3 py-2.5">
+                                            <span className="font-semibold text-slate-650 block leading-tight">{item.desc}</span>
+                                            <span className="text-[9.5px] text-slate-450 block font-bold mt-0.5">ห้อง: {item.room}</span>
+                                          </td>
+                                          <td className="px-3 py-2.5 text-right font-black text-amber-700">{formatNumber(item.qty, 1)} {item.unit}</td>
+                                          <td className="px-3 py-2.5 text-right font-black text-emerald-600">{formatCurrency(item.total)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <div className="p-8 text-center bg-slate-50/45 border border-slate-150 rounded-xl text-slate-400 font-bold">
+                                  ไม่มีบันทึกข้อมูลมู่ลี่ในช่วงเวลานี้
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {activeAccTab === 'roller' && (
+                        <div className="space-y-6">
+                          {/* Roller Blinds Aggregated summary table */}
+                          <div className="space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-sky-50 border border-sky-150 p-4 rounded-xl gap-2">
+                              <div>
+                                <h4 className="text-xs font-black text-sky-950 uppercase tracking-wider flex items-center gap-1.5">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-sky-600 inline-block animate-pulse"></span>
+                                  วิเคราะห์มิติสินค้าม่านม้วน (Roller Blinds) ที่จำหน่ายได้ (เรียงจากมากไปน้อยตามจำนวนผืนที่ขาย)
+                                </h4>
+                                <p className="text-[10px] text-sky-700 font-bold mt-0.5">
+                                  แสดงรายการม่านม้วนที่ขายได้พร้อมจำนวนที่จำหน่ายสะสม จัดเรียงจากมากไปน้อยตามคำสั่งผลิตจริง
+                                </p>
+                              </div>
+                              <span className="text-[10px] font-black bg-sky-600 text-white px-2.5 py-1 rounded-md self-start sm:self-auto">
+                                รวม {sortedRollers.length} รายการโมเดล
+                              </span>
+                            </div>
+
+                            {sortedRollers.length > 0 ? (
+                              <div className="overflow-x-auto rounded-xl border border-sky-100 max-h-[280px] overflow-y-auto">
+                                <table className="w-full text-xs text-left">
+                                  <thead className="bg-sky-50/80 text-sky-900 font-bold border-b border-sky-100 text-[10px] sticky top-0 z-10">
+                                    <tr>
+                                      <th className="px-4 py-3 bg-sky-50 w-12 text-center text-[10px]">อันดับ</th>
+                                      <th className="px-4 py-3 bg-sky-50">โมเดล/สไตล์ รายการม่านม้วน</th>
+                                      <th className="px-4 py-3 text-right bg-sky-50">จำนวนผืนรวม</th>
+                                      <th className="px-4 py-3 text-right bg-sky-50">จำนวนครั้งคำสั่งผลิต</th>
+                                      <th className="px-4 py-3 text-right bg-sky-50">มูลค่ารวมสะสม</th>
+                                      <th className="px-4 py-3 text-right bg-sky-50">สัดส่วนในกลุ่มม่านม้วน</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-sky-100 font-medium">
+                                    {sortedRollers.map((item, idx) => {
+                                      const ratio = totalRollersValue > 0 ? (item.total / totalRollersValue) * 100 : 0;
+                                      return (
+                                        <tr key={idx} className="hover:bg-sky-50/40">
+                                          <td className="px-4 py-3 text-center">
+                                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[9.5px] font-black bg-sky-100 text-sky-700">
+                                              {idx + 1}
+                                            </span>
+                                          </td>
+                                          <td className="px-4 py-3">
+                                            <span className="font-extrabold text-sky-950 block">{item.desc}</span>
+                                          </td>
+                                          <td className="px-4 py-3 text-right text-sky-800 font-black">
+                                            {formatNumber(item.qty, 1)} {item.unit}
+                                          </td>
+                                          <td className="px-4 py-3 text-right text-sky-600 font-semibold">{item.bookings} ครั้ง</td>
+                                          <td className="px-4 py-3 text-right font-black text-emerald-600">
+                                            {formatCurrency(item.total)}
+                                          </td>
+                                          <td className="px-4 py-3 text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                              <div className="w-12 bg-sky-200/50 rounded-full h-2 overflow-hidden">
+                                                <div className="bg-sky-500 h-full rounded-full" style={{ width: `${ratio}%` }}></div>
+                                              </div>
+                                              <span className="text-[10px] font-mono text-sky-800 font-black w-8 text-right">
+                                                {formatNumber(ratio, 1)}%
+                                              </span>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              <div className="p-8 text-center bg-sky-50/20 border border-sky-100 rounded-xl text-sky-400 font-bold">
+                                ไม่มีข้อมูลสรุปม่านม้วนจัดใช้ในช่วงเวลานี้
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Roller Blinds list details */}
+                          <div className="space-y-3">
+                            <h4 className="text-xs font-black text-sky-950 uppercase tracking-wider flex items-center gap-1.5 border-b border-sky-100 pb-2">
+                              <span className="w-3 h-3 rounded-md bg-sky-500 inline-block shrink-0"></span>
+                              ตารางข้อมูลม่านม้วนแยกตามใบงานธุรกรรม (Roller Blinds Details)
+                            </h4>
+
+                            {rollerBlinds.length > 0 ? (
+                              <div className="overflow-x-auto rounded-xl border border-sky-100 max-h-[300px] overflow-y-auto">
+                                <table className="w-full text-[11px] text-left">
+                                  <thead className="bg-sky-50/70 text-sky-900 font-bold border-b border-sky-100 text-[10px] sticky top-0 z-10">
+                                    <tr>
+                                      <th className="px-3 py-2.5 bg-sky-50">ใบงานอ้างอิง / ลูกค้า</th>
+                                      <th className="px-3 py-2.5 bg-sky-50">รายละเอียดผืนม่านม้วน</th>
+                                      <th className="px-3 py-2.5 bg-sky-50 text-right">จำนวน</th>
+                                      <th className="px-3 py-2.5 bg-sky-50 text-right">สุทธิหลังลด</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-sky-100 font-medium">
+                                    {rollerBlinds.map((item, idx) => (
+                                      <tr key={idx} className="hover:bg-sky-50/50">
+                                        <td className="px-3 py-2.5">
+                                          <span className="font-bold text-sky-950 block text-[10px]">{item.quotationNo}</span>
+                                          <span className="text-[9.5px] text-sky-600 font-semibold block">{item.customer}</span>
+                                        </td>
+                                        <td className="px-3 py-2.5">
+                                          <span className="font-semibold text-slate-650 block leading-tight">{item.desc}</span>
+                                          <span className="text-[9.5px] text-slate-450 block font-bold mt-0.5">ห้อง: {item.room}</span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right font-black text-sky-700">{formatNumber(item.qty, 1)} {item.unit}</td>
+                                        <td className="px-3 py-2.5 text-right font-black text-emerald-600">{formatCurrency(item.total)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              <div className="p-8 text-center bg-slate-50/45 border border-slate-150 rounded-xl text-slate-400 font-bold">
+                                ไม่มีบันทึกข้อมูลม่านม้วนในช่วงเวลานี้
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {activeAccTab === 'venetian' && (
+                        <div className="space-y-6">
+                          {/* Venetian Blinds Aggregated summary table */}
+                          <div className="space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-amber-50 border border-amber-150 p-4 rounded-xl gap-2">
+                              <div>
+                                <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-amber-600 inline-block animate-pulse"></span>
+                                  วิเคราะห์มิติสินค้ามู่ลี่ (Venetian Blinds) ที่จำหน่ายได้ (เรียงจากมากไปน้อยตามจำนวนชุดที่ขาย)
+                                </h4>
+                                <p className="text-[10px] text-amber-700 font-bold mt-0.5">
+                                  แสดงรายการรูปแบบสเปคมู่ลี่ที่ขายได้พร้อมจำนวนที่จำหน่ายสะสม จัดเรียงจากมากไปน้อยตามคำสั่งผลิตจริง
+                                </p>
+                              </div>
+                              <span className="text-[10px] font-black bg-amber-600 text-white px-2.5 py-1 rounded-md self-start sm:self-auto">
+                                รวม {sortedVenetians.length} รายการโมเดล
+                              </span>
+                            </div>
+
+                            {sortedVenetians.length > 0 ? (
+                              <div className="overflow-x-auto rounded-xl border border-amber-100 max-h-[280px] overflow-y-auto">
+                                <table className="w-full text-xs text-left">
+                                  <thead className="bg-amber-50/80 text-amber-900 font-bold border-b border-amber-100 text-[10px] sticky top-0 z-10">
+                                    <tr>
+                                      <th className="px-4 py-3 bg-amber-50 w-12 text-center text-[10px]">อันดับ</th>
+                                      <th className="px-4 py-3 bg-amber-50">โมเดล/สไตล์ รายการมู่ลี่</th>
+                                      <th className="px-4 py-3 text-right bg-amber-50">จำนวนชุดรวม</th>
+                                      <th className="px-4 py-3 text-right bg-amber-50">จำนวนครั้งคำสั่งผลิต</th>
+                                      <th className="px-4 py-3 text-right bg-amber-50">มูลค่ารวมสะสม</th>
+                                      <th className="px-4 py-3 text-right bg-amber-50">สัดส่วนในกลุ่มมู่ลี่</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-amber-100 font-medium">
+                                    {sortedVenetians.map((item, idx) => {
+                                      const ratio = totalVenetiansValue > 0 ? (item.total / totalVenetiansValue) * 100 : 0;
+                                      return (
+                                        <tr key={idx} className="hover:bg-amber-50/40">
+                                          <td className="px-4 py-3 text-center">
+                                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[9.5px] font-black bg-amber-100 text-amber-700">
+                                              {idx + 1}
+                                            </span>
+                                          </td>
+                                          <td className="px-4 py-3">
+                                            <span className="font-extrabold text-amber-950 block">{item.desc}</span>
+                                          </td>
+                                          <td className="px-4 py-3 text-right text-amber-800 font-black">
+                                            {formatNumber(item.qty, 1)} {item.unit}
+                                          </td>
+                                          <td className="px-4 py-3 text-right text-amber-600 font-semibold">{item.bookings} ครั้ง</td>
+                                          <td className="px-4 py-3 text-right font-black text-emerald-600">
+                                            {formatCurrency(item.total)}
+                                          </td>
+                                          <td className="px-4 py-3 text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                              <div className="w-12 bg-amber-200/50 rounded-full h-2 overflow-hidden">
+                                                <div className="bg-amber-500 h-full rounded-full" style={{ width: `${ratio}%` }}></div>
+                                              </div>
+                                              <span className="text-[10px] font-mono text-amber-800 font-black w-8 text-right">
+                                                {formatNumber(ratio, 1)}%
+                                              </span>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              <div className="p-8 text-center bg-amber-50/20 border border-amber-100 rounded-xl text-slate-400 font-bold">
+                                ไม่มีข้อมูลสรุปมู่ลี่จัดใช้ในช่วงเวลานี้
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Venetian Blinds list details */}
+                          <div className="space-y-3">
+                            <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider flex items-center gap-1.5 border-b border-amber-100 pb-2">
+                              <span className="w-3 h-3 rounded-md bg-amber-500 inline-block shrink-0"></span>
+                              ตารางข้อมูลมู่ลี่แยกตามใบงานธุรกรรม (Venetian Blinds Details)
+                            </h4>
+
+                            {venetianBlinds.length > 0 ? (
+                              <div className="overflow-x-auto rounded-xl border border-amber-100 max-h-[300px] overflow-y-auto">
+                                <table className="w-full text-[11px] text-left">
+                                  <thead className="bg-amber-50/70 text-amber-900 font-bold border-b border-amber-100 text-[10px] sticky top-0 z-10">
+                                    <tr>
+                                      <th className="px-3 py-2.5 bg-amber-50">ใบงานอ้างอิง / ลูกค้า</th>
+                                      <th className="px-3 py-2.5 bg-amber-50">รายละเอียดตัวมู่ลี่</th>
+                                      <th className="px-3 py-2.5 bg-amber-50 text-right">จำนวน</th>
+                                      <th className="px-3 py-2.5 bg-amber-50 text-right">สุทธิหลังลด</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-amber-100 font-medium">
+                                    {venetianBlinds.map((item, idx) => (
+                                      <tr key={idx} className="hover:bg-amber-50/50">
+                                        <td className="px-3 py-2.5">
+                                          <span className="font-bold text-amber-950 block text-[10px]">{item.quotationNo}</span>
+                                          <span className="text-[9.5px] text-amber-600 font-semibold block">{item.customer}</span>
+                                        </td>
+                                        <td className="px-3 py-2.5">
+                                          <span className="font-semibold text-slate-650 block leading-tight">{item.desc}</span>
+                                          <span className="text-[9.5px] text-slate-450 block font-bold mt-0.5">ห้อง: {item.room}</span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right font-black text-amber-700">{formatNumber(item.qty, 1)} {item.unit}</td>
+                                        <td className="px-3 py-2.5 text-right font-black text-emerald-600">{formatCurrency(item.total)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              <div className="p-8 text-center bg-amber-50/45 border border-amber-150 rounded-xl text-slate-400 font-bold">
+                                ไม่มีบันทึกข้อมูลมู่ลี่ในช่วงเวลานี้
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
+                  );
+                })()}
 
                 {/* E. COLORS detailed breakdown on fabric row double-clicked */}
                 {drilldown.type === 'colors' && (
@@ -1796,4 +2588,68 @@ function ActivityIconForModal({ type }: { type: string }) {
     default:
       return <ActivityIconForModal type="projects" />;
   }
+}
+
+// Helpers to classify and clean curtain sewing style and materials
+function isCurtainSewing(desc: string): boolean {
+  if (!desc) return false;
+  const upper = desc.toUpperCase();
+  if (upper.includes('ม้วน') || upper.includes('มู่ลี่') || upper.includes('ROLLER') || upper.includes('VENETIAN')) {
+    return false;
+  }
+  // Exclude installation/transportation/accessory services if any
+  if (upper.includes('ติดตั้ง') || upper.includes('ขนส่ง') || upper.includes('เดินทาง') || upper.includes('รื้อถอน') || upper.includes('ซ่อม') || upper.includes('ราง')) {
+    return false;
+  }
+  return true;
+}
+
+function classifySewingStyle(desc: string): string {
+  if (!desc) return 'รูปแบบทั่วไป';
+  const upper = desc.toUpperCase();
+  if (upper.includes('จับจีบ') || upper.includes('จีบ')) {
+    return 'จับจีบ';
+  }
+  if (upper.includes('S-CURVE') || upper.includes('S - CURVE') || upper.includes('S CURVE') || upper.includes('เอสเคิร์ฟ') || upper.includes('ลอน') || upper.includes('CURVE')) {
+    return 'S-CURVE';
+  }
+  if (upper.includes('พับ')) {
+    return 'ม่านพับ';
+  }
+  if (upper.includes('ตาไก่')) {
+    return 'ม่านตาไก่';
+  }
+  if (upper.includes('คอกระเช้า')) {
+    return 'ม่านคอกระเช้า';
+  }
+  
+  // Clean up extra text if unknown style
+  return desc
+    .replace(/ค่าตัดเย็บม่าน/g, '')
+    .replace(/ค่าตัดเย็บ/g, '')
+    .replace(/ค่าบริการ/g, '')
+    .replace(/ม่าน/g, '')
+    .replace(/\(ทึบ\)/g, '')
+    .replace(/\(โปร่ง\)/g, '')
+    .replace(/\(.*?\)/g, '')
+    .replace(/[0-9]+?.*/g, '')
+    .trim() || 'รูปแบบทั่วไป';
+}
+
+function isSheerCurtain(desc: string): boolean {
+  if (!desc) return false;
+  const upper = desc.toUpperCase();
+  return upper.includes('โปร่ง') || upper.includes('SHEER');
+}
+
+function isRollerBlind(desc: string): boolean {
+  if (!desc) return false;
+  const upper = desc.toUpperCase();
+  return upper.includes('ม้วน') || upper.includes('ROLLER');
+}
+
+function isVenetianBlind(desc: string): boolean {
+  if (!desc) return false;
+  const upper = desc.toUpperCase();
+  return upper.includes('มู่ลี่') || upper.includes('VENETIAN');
 }
